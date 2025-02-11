@@ -4,37 +4,25 @@ const jwt = require("jsonwebtoken");
 const nodemailer = require("nodemailer");
 
 
-const register = async (body) =>{
-    const userExist = await User.findOne({sEmail:body.sEmail})
-    
+const register = async (body) => {
+    const userExist = await User.findOne({ sEmail: body.sEmail })
     if (userExist) {
         throw new Error("User already exists");
-        // res.json({ message: "User is alredy exist "});
     } else {
         return await User.create(body)
-        
+
     }
 }
 
-const login = async (body) =>{
+const login = async (body) => {
     const userExist = await User.findOne({ sEmail: body.sEmail })
-    console.log("userExist===>", userExist);
-    console.log("body.sEmail===>", body.sEmail);
-    console.log("body.sPassword===>", body.sPassword);
-    console.log("userExist.sPassword===>", userExist.sPassword);
-    
     if (userExist) {
         const isPasswordMatch = await bcrypt.compare(body.sPassword, userExist.sPassword);
-        console.log("isPasswordMatch=====>", isPasswordMatch);
-        
         if (!isPasswordMatch) {
-            throw new Error("Invalid email or password"); // 🔥 Throw error if password is incorrect
+            throw new Error("Invalid email or password");
         }
         return userExist;
-
     } else {
-        console.log("else part===>");
-        
         throw new Error("This email is not register with us!");
 
     }
@@ -45,26 +33,22 @@ const login = async (body) =>{
 const transporter = nodemailer.createTransport({
     service: "gmail",
     auth: {
-        user: process.env.EMAIL_USER, 
+        user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS,
     },
 });
 
 const forgotPassword = async (body) => {
     try {
-        const {sEmail} = body
-        const user = await User.findOne({ sEmail  });
-
+        const { sEmail } = body
+        const user = await User.findOne({ sEmail });
         if (!user) {
             throw new Error("No account found with this email.");
         }
-
         // Generate a reset token (valid for 1 hour)
         const resetToken = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, {
             expiresIn: "1h",
         });
-        console.log("resetToken===>", resetToken);
-        
 
         user.sResetToken = resetToken;
         user.dResetTokenExpires = Date.now() + 3600000; // 1 hour
@@ -91,28 +75,16 @@ const forgotPassword = async (body) => {
 const resetPassword = async (token, newPassword) => {
     try {
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        console.log("decoded--->", decoded)
         const user = await User.findOne({
             _id: decoded.userId,
             sResetToken: token,
             dResetTokenExpires: { $gt: Date.now() }, // Ensure token is not expired
         });
-        console.log("user====>", user);
-        
 
         if (!user) {
             throw new Error("Invalid or expired token.");
         }
-
-        // Hash and update the new password
-        const hashedPassword = await bcrypt.hash(newPassword,8);
-        console.log("hashedPassword===>", hashedPassword)
-        user.sPassword = hashedPassword;
-        user.sResetToken = null;
-        user.dResetTokenExpires = null;
-        await user.save();
-
-        return { message: "Your password has been successfully reset." };
+        return await User.findOneAndUpdate({ sEmail: user.sEmail }, { sPassword: await bcrypt.hash(newPassword, 8), sResetToken: null, dResetTokenExpires: null }, { new: true });
     } catch (error) {
         throw new Error(error.message);
     }
